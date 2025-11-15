@@ -6,6 +6,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Music Player">
+    
+    <!-- Icônes pour iPhone -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icon.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon.png">
+    <link rel="manifest" href="manifest.json">
+    
     <title>Lecteur de Musique</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -26,6 +32,10 @@
         
         .spinning {
             animation: spin 3s linear infinite;
+        }
+
+        #fileInput {
+            display: none;
         }
     </style>
 </head>
@@ -98,99 +108,199 @@
             </svg>
         );
 
+        const Upload = ({size = 24}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+        );
+
         const MusicPlayer = () => {
             const [isPlaying, setIsPlaying] = useState(false);
             const [currentTime, setCurrentTime] = useState(0);
-            const [duration, setDuration] = useState(180);
+            const [duration, setDuration] = useState(0);
             const [volume, setVolume] = useState(70);
             const [currentTrack, setCurrentTrack] = useState(0);
-            const [isLiked, setIsLiked] = useState(false);
+            const [likedTracks, setLikedTracks] = useState([]);
             const [shuffle, setShuffle] = useState(false);
             const [repeat, setRepeat] = useState(false);
+            const [playlist, setPlaylist] = useState([]);
             
-            const playlist = [
-                { title: "Électrique", artist: "Nova Sound", album: "Night Drive", duration: 180 },
-                { title: "Horizons", artist: "Luna Wave", album: "Dreamscape", duration: 210 },
-                { title: "Nébuleuse", artist: "Echo Palace", album: "Cosmos", duration: 195 },
-                { title: "Minuit", artist: "Stellar Drift", album: "Urban Dreams", duration: 165 }
-            ];
-
-            const intervalRef = useRef(null);
+            const audioRef = useRef(null);
+            const fileInputRef = useRef(null);
 
             useEffect(() => {
-                if (isPlaying) {
-                    intervalRef.current = setInterval(() => {
-                        setCurrentTime(prev => {
-                            if (prev >= duration) {
-                                handleNext();
-                                return 0;
-                            }
-                            return prev + 1;
-                        });
-                    }, 1000);
-                } else {
-                    if (intervalRef.current) clearInterval(intervalRef.current);
+                if (audioRef.current) {
+                    audioRef.current.volume = volume / 100;
                 }
-                return () => {
-                    if (intervalRef.current) clearInterval(intervalRef.current);
-                };
-            }, [isPlaying, duration]);
+            }, [volume]);
 
             useEffect(() => {
-                setDuration(playlist[currentTrack].duration);
-                setCurrentTime(0);
-            }, [currentTrack]);
+                if (audioRef.current && playlist.length > 0) {
+                    audioRef.current.src = playlist[currentTrack].url;
+                    audioRef.current.load();
+                    if (isPlaying) {
+                        audioRef.current.play();
+                    }
+                }
+            }, [currentTrack, playlist]);
 
-            const togglePlay = () => setIsPlaying(!isPlaying);
+            const handleFileSelect = (e) => {
+                const files = Array.from(e.target.files);
+                const newTracks = files.map((file, index) => ({
+                    id: Date.now() + index,
+                    title: file.name.replace(/\.[^/.]+$/, ""),
+                    artist: "Artiste Inconnu",
+                    url: URL.createObjectURL(file),
+                    file: file
+                }));
+                setPlaylist([...playlist, ...newTracks]);
+                if (playlist.length === 0 && newTracks.length > 0) {
+                    setCurrentTrack(0);
+                }
+            };
+
+            const togglePlay = () => {
+                if (playlist.length === 0) {
+                    fileInputRef.current.click();
+                    return;
+                }
+                
+                if (isPlaying) {
+                    audioRef.current.pause();
+                } else {
+                    audioRef.current.play();
+                }
+                setIsPlaying(!isPlaying);
+            };
             
             const handleNext = () => {
-                setCurrentTrack((prev) => (prev + 1) % playlist.length);
+                if (playlist.length === 0) return;
+                let nextTrack;
+                if (shuffle) {
+                    nextTrack = Math.floor(Math.random() * playlist.length);
+                } else {
+                    nextTrack = (currentTrack + 1) % playlist.length;
+                }
+                setCurrentTrack(nextTrack);
                 setIsPlaying(true);
             };
             
             const handlePrev = () => {
+                if (playlist.length === 0) return;
                 if (currentTime > 3) {
-                    setCurrentTime(0);
+                    audioRef.current.currentTime = 0;
                 } else {
-                    setCurrentTrack((prev) => (prev - 1 + playlist.length) % playlist.length);
+                    const prevTrack = (currentTrack - 1 + playlist.length) % playlist.length;
+                    setCurrentTrack(prevTrack);
+                }
+            };
+
+            const handleTimeUpdate = () => {
+                if (audioRef.current) {
+                    setCurrentTime(audioRef.current.currentTime);
+                    setDuration(audioRef.current.duration || 0);
+                }
+            };
+
+            const handleEnded = () => {
+                if (repeat) {
+                    audioRef.current.currentTime = 0;
+                    audioRef.current.play();
+                } else {
+                    handleNext();
+                }
+            };
+
+            const handleSeek = (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const percentage = x / rect.width;
+                const newTime = percentage * duration;
+                if (audioRef.current) {
+                    audioRef.current.currentTime = newTime;
+                    setCurrentTime(newTime);
+                }
+            };
+
+            const toggleLike = () => {
+                if (playlist.length === 0) return;
+                const trackId = playlist[currentTrack].id;
+                if (likedTracks.includes(trackId)) {
+                    setLikedTracks(likedTracks.filter(id => id !== trackId));
+                } else {
+                    setLikedTracks([...likedTracks, trackId]);
                 }
             };
 
             const formatTime = (seconds) => {
+                if (!seconds || isNaN(seconds)) return "0:00";
                 const mins = Math.floor(seconds / 60);
-                const secs = seconds % 60;
+                const secs = Math.floor(seconds % 60);
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
 
-            const progress = (currentTime / duration) * 100;
+            const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+            const currentTrackData = playlist[currentTrack];
+            const isLiked = currentTrackData && likedTracks.includes(currentTrackData.id);
 
             return (
                 <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
+                    <audio 
+                        ref={audioRef}
+                        onTimeUpdate={handleTimeUpdate}
+                        onEnded={handleEnded}
+                        onLoadedMetadata={handleTimeUpdate}
+                    />
+                    <input 
+                        ref={fileInputRef}
+                        id="fileInput"
+                        type="file" 
+                        accept="audio/*" 
+                        multiple 
+                        onChange={handleFileSelect}
+                    />
+                    
                     <div className="w-full max-w-md">
+                        {/* Album Art */}
                         <div className="mb-8 relative">
                             <div className="w-full aspect-square bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600 rounded-3xl shadow-2xl flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-black opacity-20"></div>
-                                <div className={`w-32 h-32 border-4 border-white rounded-full ${isPlaying ? 'spinning' : ''}`}>
-                                    <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center">
-                                        <div className="w-8 h-8 bg-teal-400 rounded-full"></div>
+                                {playlist.length === 0 ? (
+                                    <button 
+                                        onClick={() => fileInputRef.current.click()}
+                                        className="z-10 bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl hover:bg-white/30 transition-all"
+                                    >
+                                        <Upload size={48} />
+                                        <p className="text-white font-bold mt-2">Ajouter des musiques</p>
+                                    </button>
+                                ) : (
+                                    <div className={`w-32 h-32 border-4 border-white rounded-full ${isPlaying ? 'spinning' : ''}`}>
+                                        <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center">
+                                            <div className="w-8 h-8 bg-teal-400 rounded-full"></div>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
 
+                        {/* Track Info */}
                         <div className="text-center mb-6">
-                            <h2 className="text-3xl font-bold text-white mb-2">{playlist[currentTrack].title}</h2>
-                            <p className="text-teal-400 text-lg">{playlist[currentTrack].artist}</p>
-                            <p className="text-gray-400 text-sm">{playlist[currentTrack].album}</p>
+                            <h2 className="text-3xl font-bold text-white mb-2">
+                                {currentTrackData ? currentTrackData.title : "Aucune musique"}
+                            </h2>
+                            <p className="text-teal-400 text-lg">
+                                {currentTrackData ? currentTrackData.artist : "Ajoutez vos fichiers MP3"}
+                            </p>
                         </div>
 
+                        {/* Progress Bar */}
                         <div className="mb-2">
-                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer" onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.clientX - rect.left;
-                                const percentage = x / rect.width;
-                                setCurrentTime(Math.floor(percentage * duration));
-                            }}>
+                            <div 
+                                className="h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer" 
+                                onClick={handleSeek}
+                            >
                                 <div 
                                     className="h-full bg-gradient-to-r from-teal-400 to-teal-500 transition-all duration-300 relative"
                                     style={{ width: `${progress}%` }}
@@ -204,6 +314,7 @@
                             </div>
                         </div>
 
+                        {/* Controls */}
                         <div className="flex items-center justify-center gap-6 mb-6">
                             <button 
                                 onClick={() => setShuffle(!shuffle)}
@@ -214,7 +325,8 @@
                             
                             <button 
                                 onClick={handlePrev}
-                                className="text-gray-300 hover:text-white transition-colors"
+                                className="text-gray-300 hover:text-white transition-colors disabled:opacity-30"
+                                disabled={playlist.length === 0}
                             >
                                 <SkipBack size={32} />
                             </button>
@@ -228,7 +340,8 @@
                             
                             <button 
                                 onClick={handleNext}
-                                className="text-gray-300 hover:text-white transition-colors"
+                                className="text-gray-300 hover:text-white transition-colors disabled:opacity-30"
+                                disabled={playlist.length === 0}
                             >
                                 <SkipForward size={32} />
                             </button>
@@ -241,6 +354,7 @@
                             </button>
                         </div>
 
+                        {/* Volume & Like */}
                         <div className="flex items-center justify-between bg-gray-800 rounded-2xl p-4">
                             <div className="flex items-center gap-3 flex-1">
                                 <Volume2 size={20} />
@@ -259,41 +373,62 @@
                             </div>
                             
                             <button 
-                                onClick={() => setIsLiked(!isLiked)}
-                                className="ml-4 transition-all hover:scale-110"
+                                onClick={toggleLike}
+                                className="ml-4 transition-all hover:scale-110 disabled:opacity-30"
+                                disabled={playlist.length === 0}
                             >
                                 <Heart size={24} filled={isLiked} />
                             </button>
                         </div>
 
+                        {/* Playlist */}
                         <div className="mt-6 bg-gray-800 rounded-2xl p-4">
-                            <h3 className="text-white font-semibold mb-3">Playlist</h3>
-                            <div className="space-y-2">
-                                {playlist.map((track, index) => (
-                                    <div 
-                                        key={index}
-                                        onClick={() => {
-                                            setCurrentTrack(index);
-                                            setIsPlaying(true);
-                                        }}
-                                        className={`p-3 rounded-xl cursor-pointer transition-all ${
-                                            index === currentTrack 
-                                                ? 'bg-gradient-to-r from-teal-500/20 to-teal-600/20 border border-teal-500/30' 
-                                                : 'bg-gray-700/50 hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        <div className="flex justify-between items-center">
-                                            <div>
-                                                <p className={`font-medium ${index === currentTrack ? 'text-teal-400' : 'text-white'}`}>
-                                                    {track.title}
-                                                </p>
-                                                <p className="text-gray-400 text-sm">{track.artist}</p>
-                                            </div>
-                                            <span className="text-gray-400 text-sm">{formatTime(track.duration)}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-white font-semibold">Playlist ({playlist.length})</h3>
+                                <button 
+                                    onClick={() => fileInputRef.current.click()}
+                                    className="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-2"
+                                >
+                                    <Upload size={16} />
+                                    Ajouter
+                                </button>
                             </div>
+                            
+                            {playlist.length === 0 ? (
+                                <div className="text-center py-8 text-gray-400">
+                                    <p>Aucune musique pour le moment</p>
+                                    <p className="text-sm mt-2">Cliquez sur "Ajouter" pour importer vos MP3</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-64 overflow-y-auto">
+                                    {playlist.map((track, index) => (
+                                        <div 
+                                            key={track.id}
+                                            onClick={() => {
+                                                setCurrentTrack(index);
+                                                setIsPlaying(true);
+                                            }}
+                                            className={`p-3 rounded-xl cursor-pointer transition-all ${
+                                                index === currentTrack 
+                                                    ? 'bg-gradient-to-r from-teal-500/20 to-teal-600/20 border border-teal-500/30' 
+                                                    : 'bg-gray-700/50 hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`font-medium truncate ${index === currentTrack ? 'text-teal-400' : 'text-white'}`}>
+                                                        {track.title}
+                                                    </p>
+                                                    <p className="text-gray-400 text-sm">{track.artist}</p>
+                                                </div>
+                                                {likedTracks.includes(track.id) && (
+                                                    <Heart size={16} filled={true} />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
