@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Music Player">
+    <title>Lecteur de Musique</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .spinning {
+            animation: spin 3s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const Play = () => (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="white" stroke="white" strokeWidth="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const Pause = () => (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="white" stroke="white" strokeWidth="2">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const SkipBack = ({size = 32}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5"></line>
+            </svg>
+        );
+
+        const SkipForward = ({size = 32}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19"></line>
+            </svg>
+        );
+
+        const Volume2 = ({size = 20}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+        );
+
+        const Heart = ({size = 24, filled = false}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+            </svg>
+        );
+
+        const Shuffle = ({size = 20}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="16 3 21 3 21 8"></polyline>
+                <line x1="4" y1="20" x2="21" y2="3"></line>
+                <polyline points="21 16 21 21 16 21"></polyline>
+                <line x1="15" y1="15" x2="21" y2="21"></line>
+                <line x1="4" y1="4" x2="9" y2="9"></line>
+            </svg>
+        );
+
+        const Repeat = ({size = 20}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="17 1 21 5 17 9"></polyline>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                <polyline points="7 23 3 19 7 15"></polyline>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+            </svg>
+        );
+
+        const MusicPlayer = () => {
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [currentTime, setCurrentTime] = useState(0);
+            const [duration, setDuration] = useState(180);
+            const [volume, setVolume] = useState(70);
+            const [currentTrack, setCurrentTrack] = useState(0);
+            const [isLiked, setIsLiked] = useState(false);
+            const [shuffle, setShuffle] = useState(false);
+            const [repeat, setRepeat] = useState(false);
+            
+            const playlist = [
+                { title: "Électrique", artist: "Nova Sound", album: "Night Drive", duration: 180 },
+                { title: "Horizons", artist: "Luna Wave", album: "Dreamscape", duration: 210 },
+                { title: "Nébuleuse", artist: "Echo Palace", album: "Cosmos", duration: 195 },
+                { title: "Minuit", artist: "Stellar Drift", album: "Urban Dreams", duration: 165 }
+            ];
+
+            const intervalRef = useRef(null);
+
+            useEffect(() => {
+                if (isPlaying) {
+                    intervalRef.current = setInterval(() => {
+                        setCurrentTime(prev => {
+                            if (prev >= duration) {
+                                handleNext();
+                                return 0;
+                            }
+                            return prev + 1;
+                        });
+                    }, 1000);
+                } else {
+                    if (intervalRef.current) clearInterval(intervalRef.current);
+                }
+                return () => {
+                    if (intervalRef.current) clearInterval(intervalRef.current);
+                };
+            }, [isPlaying, duration]);
+
+            useEffect(() => {
+                setDuration(playlist[currentTrack].duration);
+                setCurrentTime(0);
+            }, [currentTrack]);
+
+            const togglePlay = () => setIsPlaying(!isPlaying);
+            
+            const handleNext = () => {
+                setCurrentTrack((prev) => (prev + 1) % playlist.length);
+                setIsPlaying(true);
+            };
+            
+            const handlePrev = () => {
+                if (currentTime > 3) {
+                    setCurrentTime(0);
+                } else {
+                    setCurrentTrack((prev) => (prev - 1 + playlist.length) % playlist.length);
+                }
+            };
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const progress = (currentTime / duration) * 100;
+
+            return (
+                <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
+                    <div className="w-full max-w-md">
+                        <div className="mb-8 relative">
+                            <div className="w-full aspect-square bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600 rounded-3xl shadow-2xl flex items-center justify-center relative overflow-hidden">
+                                <div className="absolute inset-0 bg-black opacity-20"></div>
+                                <div className={`w-32 h-32 border-4 border-white rounded-full ${isPlaying ? 'spinning' : ''}`}>
+                                    <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center">
+                                        <div className="w-8 h-8 bg-teal-400 rounded-full"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-center mb-6">
+                            <h2 className="text-3xl font-bold text-white mb-2">{playlist[currentTrack].title}</h2>
+                            <p className="text-teal-400 text-lg">{playlist[currentTrack].artist}</p>
+                            <p className="text-gray-400 text-sm">{playlist[currentTrack].album}</p>
+                        </div>
+
+                        <div className="mb-2">
+                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer" onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const x = e.clientX - rect.left;
+                                const percentage = x / rect.width;
+                                setCurrentTime(Math.floor(percentage * duration));
+                            }}>
+                                <div 
+                                    className="h-full bg-gradient-to-r from-teal-400 to-teal-500 transition-all duration-300 relative"
+                                    style={{ width: `${progress}%` }}
+                                >
+                                    <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg"></div>
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-sm text-gray-400 mt-1">
+                                <span>{formatTime(currentTime)}</span>
+                                <span>{formatTime(duration)}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-6 mb-6">
+                            <button 
+                                onClick={() => setShuffle(!shuffle)}
+                                className={`${shuffle ? 'text-teal-400' : 'text-gray-400'} hover:text-teal-300 transition-colors`}
+                            >
+                                <Shuffle size={20} />
+                            </button>
+                            
+                            <button 
+                                onClick={handlePrev}
+                                className="text-gray-300 hover:text-white transition-colors"
+                            >
+                                <SkipBack size={32} />
+                            </button>
+                            
+                            <button 
+                                onClick={togglePlay}
+                                className="w-16 h-16 bg-gradient-to-br from-teal-400 to-teal-500 rounded-full flex items-center justify-center shadow-lg hover:shadow-teal-500/50 transition-all hover:scale-105"
+                            >
+                                {isPlaying ? <Pause /> : <Play />}
+                            </button>
+                            
+                            <button 
+                                onClick={handleNext}
+                                className="text-gray-300 hover:text-white transition-colors"
+                            >
+                                <SkipForward size={32} />
+                            </button>
+                            
+                            <button 
+                                onClick={() => setRepeat(!repeat)}
+                                className={`${repeat ? 'text-teal-400' : 'text-gray-400'} hover:text-teal-300 transition-colors`}
+                            >
+                                <Repeat size={20} />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-gray-800 rounded-2xl p-4">
+                            <div className="flex items-center gap-3 flex-1">
+                                <Volume2 size={20} />
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    value={volume}
+                                    onChange={(e) => setVolume(e.target.value)}
+                                    className="flex-1 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer"
+                                    style={{
+                                        background: `linear-gradient(to right, rgb(45, 212, 191) 0%, rgb(45, 212, 191) ${volume}%, rgb(55, 65, 81) ${volume}%, rgb(55, 65, 81) 100%)`
+                                    }}
+                                />
+                                <span className="text-gray-400 text-sm w-8">{volume}</span>
+                            </div>
+                            
+                            <button 
+                                onClick={() => setIsLiked(!isLiked)}
+                                className="ml-4 transition-all hover:scale-110"
+                            >
+                                <Heart size={24} filled={isLiked} />
+                            </button>
+                        </div>
+
+                        <div className="mt-6 bg-gray-800 rounded-2xl p-4">
+                            <h3 className="text-white font-semibold mb-3">Playlist</h3>
+                            <div className="space-y-2">
+                                {playlist.map((track, index) => (
+                                    <div 
+                                        key={index}
+                                        onClick={() => {
+                                            setCurrentTrack(index);
+                                            setIsPlaying(true);
+                                        }}
+                                        className={`p-3 rounded-xl cursor-pointer transition-all ${
+                                            index === currentTrack 
+                                                ? 'bg-gradient-to-r from-teal-500/20 to-teal-600/20 border border-teal-500/30' 
+                                                : 'bg-gray-700/50 hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className={`font-medium ${index === currentTrack ? 'text-teal-400' : 'text-white'}`}>
+                                                    {track.title}
+                                                </p>
+                                                <p className="text-gray-400 text-sm">{track.artist}</p>
+                                            </div>
+                                            <span className="text-gray-400 text-sm">{formatTime(track.duration)}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<MusicPlayer />, document.getElementById('root'));
+    </script>
+</body>
+</html>
