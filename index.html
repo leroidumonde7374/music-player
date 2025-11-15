@@ -7,11 +7,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Music Player">
     
-    <!-- Icônes pour iPhone -->
-    <link rel="apple-touch-icon" sizes="180x180" href="icon.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="icon.png">
-    <link rel="manifest" href="manifest.json">
-    
     <title>Lecteur de Musique</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -34,8 +29,24 @@
             animation: spin 3s linear infinite;
         }
 
-        #fileInput {
-            display: none;
+        /* Style personnalisé pour input file */
+        .file-input-label {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        input[type="file"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border-width: 0;
         }
     </style>
 </head>
@@ -128,7 +139,6 @@
             const [playlist, setPlaylist] = useState([]);
             
             const audioRef = useRef(null);
-            const fileInputRef = useRef(null);
 
             useEffect(() => {
                 if (audioRef.current) {
@@ -141,13 +151,18 @@
                     audioRef.current.src = playlist[currentTrack].url;
                     audioRef.current.load();
                     if (isPlaying) {
-                        audioRef.current.play();
+                        audioRef.current.play().catch(err => {
+                            console.log("Erreur de lecture:", err);
+                            setIsPlaying(false);
+                        });
                     }
                 }
             }, [currentTrack, playlist]);
 
             const handleFileSelect = (e) => {
                 const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+                
                 const newTracks = files.map((file, index) => ({
                     id: Date.now() + index,
                     title: file.name.replace(/\.[^/.]+$/, ""),
@@ -155,24 +170,28 @@
                     url: URL.createObjectURL(file),
                     file: file
                 }));
-                setPlaylist([...playlist, ...newTracks]);
+                
+                setPlaylist(prev => [...prev, ...newTracks]);
+                
                 if (playlist.length === 0 && newTracks.length > 0) {
                     setCurrentTrack(0);
                 }
             };
 
             const togglePlay = () => {
-                if (playlist.length === 0) {
-                    fileInputRef.current.click();
-                    return;
-                }
+                if (playlist.length === 0) return;
                 
                 if (isPlaying) {
                     audioRef.current.pause();
+                    setIsPlaying(false);
                 } else {
-                    audioRef.current.play();
+                    audioRef.current.play().then(() => {
+                        setIsPlaying(true);
+                    }).catch(err => {
+                        console.log("Erreur de lecture:", err);
+                        setIsPlaying(false);
+                    });
                 }
-                setIsPlaying(!isPlaying);
             };
             
             const handleNext = () => {
@@ -253,14 +272,6 @@
                         onEnded={handleEnded}
                         onLoadedMetadata={handleTimeUpdate}
                     />
-                    <input 
-                        ref={fileInputRef}
-                        id="fileInput"
-                        type="file" 
-                        accept="audio/*" 
-                        multiple 
-                        onChange={handleFileSelect}
-                    />
                     
                     <div className="w-full max-w-md">
                         {/* Album Art */}
@@ -268,13 +279,16 @@
                             <div className="w-full aspect-square bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600 rounded-3xl shadow-2xl flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-black opacity-20"></div>
                                 {playlist.length === 0 ? (
-                                    <button 
-                                        onClick={() => fileInputRef.current.click()}
-                                        className="z-10 bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl hover:bg-white/30 transition-all"
-                                    >
+                                    <label className="z-10 bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl hover:bg-white/30 transition-all cursor-pointer flex flex-col items-center">
+                                        <input 
+                                            type="file" 
+                                            accept="audio/*" 
+                                            multiple 
+                                            onChange={handleFileSelect}
+                                        />
                                         <Upload size={48} />
                                         <p className="text-white font-bold mt-2">Ajouter des musiques</p>
-                                    </button>
+                                    </label>
                                 ) : (
                                     <div className={`w-32 h-32 border-4 border-white rounded-full ${isPlaying ? 'spinning' : ''}`}>
                                         <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center">
@@ -333,7 +347,8 @@
                             
                             <button 
                                 onClick={togglePlay}
-                                className="w-16 h-16 bg-gradient-to-br from-teal-400 to-teal-500 rounded-full flex items-center justify-center shadow-lg hover:shadow-teal-500/50 transition-all hover:scale-105"
+                                className="w-16 h-16 bg-gradient-to-br from-teal-400 to-teal-500 rounded-full flex items-center justify-center shadow-lg hover:shadow-teal-500/50 transition-all hover:scale-105 disabled:opacity-50"
+                                disabled={playlist.length === 0}
                             >
                                 {isPlaying ? <Pause /> : <Play />}
                             </button>
@@ -385,13 +400,16 @@
                         <div className="mt-6 bg-gray-800 rounded-2xl p-4">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-white font-semibold">Playlist ({playlist.length})</h3>
-                                <button 
-                                    onClick={() => fileInputRef.current.click()}
-                                    className="text-teal-400 hover:text-teal-300 text-sm flex items-center gap-2"
-                                >
+                                <label className="text-teal-400 hover:text-teal-300 text-sm file-input-label cursor-pointer">
+                                    <input 
+                                        type="file" 
+                                        accept="audio/*" 
+                                        multiple 
+                                        onChange={handleFileSelect}
+                                    />
                                     <Upload size={16} />
-                                    Ajouter
-                                </button>
+                                    <span>Ajouter</span>
+                                </label>
                             </div>
                             
                             {playlist.length === 0 ? (
@@ -439,3 +457,4 @@
     </script>
 </body>
 </html>
+
