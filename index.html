@@ -29,24 +29,13 @@
             animation: spin 3s linear infinite;
         }
 
-        /* Style personnalisé pour input file */
-        .file-input-label {
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        input[type="file"] {
+        /* Masquer visuellement mais garder accessible */
+        .visually-hidden {
             position: absolute;
+            left: -10000px;
             width: 1px;
             height: 1px;
-            padding: 0;
-            margin: -1px;
             overflow: hidden;
-            clip: rect(0,0,0,0);
-            white-space: nowrap;
-            border-width: 0;
         }
     </style>
 </head>
@@ -139,6 +128,8 @@
             const [playlist, setPlaylist] = useState([]);
             
             const audioRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const playlistInputRef = useRef(null);
 
             useEffect(() => {
                 if (audioRef.current) {
@@ -273,19 +264,36 @@
                         onLoadedMetadata={handleTimeUpdate}
                     />
                     
+                    {/* Inputs cachés pour les fichiers */}
+                    <input 
+                        ref={fileInputRef}
+                        type="file" 
+                        accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a" 
+                        multiple 
+                        onChange={handleFileSelect}
+                        className="visually-hidden"
+                        id="mainFileInput"
+                    />
+                    <input 
+                        ref={playlistInputRef}
+                        type="file" 
+                        accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a" 
+                        multiple 
+                        onChange={handleFileSelect}
+                        className="visually-hidden"
+                        id="playlistFileInput"
+                    />
+                    
                     <div className="w-full max-w-md">
                         {/* Album Art */}
                         <div className="mb-8 relative">
                             <div className="w-full aspect-square bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600 rounded-3xl shadow-2xl flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-black opacity-20"></div>
                                 {playlist.length === 0 ? (
-                                    <label className="z-10 bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl hover:bg-white/30 transition-all cursor-pointer flex flex-col items-center">
-                                        <input 
-                                            type="file" 
-                                            accept="audio/*" 
-                                            multiple 
-                                            onChange={handleFileSelect}
-                                        />
+                                    <label 
+                                        htmlFor="mainFileInput"
+                                        className="z-10 bg-white/20 backdrop-blur-sm px-8 py-4 rounded-2xl hover:bg-white/30 transition-all cursor-pointer flex flex-col items-center"
+                                    >
                                         <Upload size={48} />
                                         <p className="text-white font-bold mt-2">Ajouter des musiques</p>
                                     </label>
@@ -400,13 +408,10 @@
                         <div className="mt-6 bg-gray-800 rounded-2xl p-4">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="text-white font-semibold">Playlist ({playlist.length})</h3>
-                                <label className="text-teal-400 hover:text-teal-300 text-sm file-input-label cursor-pointer">
-                                    <input 
-                                        type="file" 
-                                        accept="audio/*" 
-                                        multiple 
-                                        onChange={handleFileSelect}
-                                    />
+                                <label 
+                                    htmlFor="playlistFileInput"
+                                    className="text-teal-400 hover:text-teal-300 text-sm cursor-pointer flex items-center gap-2"
+                                >
                                     <Upload size={16} />
                                     <span>Ajouter</span>
                                 </label>
@@ -457,4 +462,5 @@
     </script>
 </body>
 </html>
+
 
