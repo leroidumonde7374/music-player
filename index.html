@@ -6,8 +6,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Music Player">
-    <link rel="apple-touch-icon" sizes="180x180" href="icon.png">
-<link rel="icon" type="image/png" sizes="512x512" href="icon.png">
     
     <title>Lecteur de Musique</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -128,10 +126,91 @@
             const [shuffle, setShuffle] = useState(false);
             const [repeat, setRepeat] = useState(false);
             const [playlist, setPlaylist] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
             
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
             const playlistInputRef = useRef(null);
+
+            // Charger la playlist au démarrage
+            useEffect(() => {
+                loadPlaylistFromStorage();
+            }, []);
+
+            // Sauvegarder la playlist à chaque modification
+            useEffect(() => {
+                if (!isLoading && playlist.length > 0) {
+                    savePlaylistToStorage();
+                }
+            }, [playlist, isLoading]);
+
+            const savePlaylistToStorage = async () => {
+                try {
+                    // Sauvegarder les métadonnées
+                    const playlistMeta = playlist.map(track => ({
+                        id: track.id,
+                        title: track.title,
+                        artist: track.artist,
+                        fileName: track.file.name
+                    }));
+                    
+                    await window.storage.set('playlist-meta', JSON.stringify(playlistMeta));
+                    
+                    // Sauvegarder chaque fichier audio
+                    for (const track of playlist) {
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            await window.storage.set(`audio-${track.id}`, e.target.result);
+                        };
+                        reader.readAsDataURL(track.file);
+                    }
+                } catch (error) {
+                    console.log('Erreur de sauvegarde:', error);
+                }
+            };
+
+            const loadPlaylistFromStorage = async () => {
+                try {
+                    const metaResult = await window.storage.get('playlist-meta');
+                    if (!metaResult) {
+                        setIsLoading(false);
+                        return;
+                    }
+                    
+                    const playlistMeta = JSON.parse(metaResult.value);
+                    const loadedTracks = [];
+                    
+                    for (const meta of playlistMeta) {
+                        try {
+                            const audioResult = await window.storage.get(`audio-${meta.id}`);
+                            if (audioResult) {
+                                // Convertir le data URL en Blob puis en File
+                                const response = await fetch(audioResult.value);
+                                const blob = await response.blob();
+                                const file = new File([blob], meta.fileName, { type: 'audio/mpeg' });
+                                
+                                loadedTracks.push({
+                                    id: meta.id,
+                                    title: meta.title,
+                                    artist: meta.artist,
+                                    url: audioResult.value,
+                                    file: file
+                                });
+                            }
+                        } catch (err) {
+                            console.log('Erreur chargement piste:', err);
+                        }
+                    }
+                    
+                    if (loadedTracks.length > 0) {
+                        setPlaylist(loadedTracks);
+                    }
+                } catch (error) {
+                    console.log('Erreur de chargement:', error);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
 
             useEffect(() => {
                 if (audioRef.current) {
@@ -168,6 +247,25 @@
                 
                 if (playlist.length === 0 && newTracks.length > 0) {
                     setCurrentTrack(0);
+                }
+            };
+
+            const removeTrack = async (trackId) => {
+                try {
+                    await window.storage.delete(`audio-${trackId}`);
+                    setPlaylist(prev => {
+                        const newPlaylist = prev.filter(track => track.id !== trackId);
+                        if (newPlaylist.length === 0) {
+                            window.storage.delete('playlist-meta');
+                        }
+                        return newPlaylist;
+                    });
+                    
+                    if (currentTrack >= playlist.length - 1) {
+                        setCurrentTrack(Math.max(0, playlist.length - 2));
+                    }
+                } catch (error) {
+                    console.log('Erreur suppression:', error);
                 }
             };
 
@@ -477,6 +575,7 @@
     </script>
 </body>
 </html>
+
 
 
 
