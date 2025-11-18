@@ -159,15 +159,16 @@
                         fileName: track.file.name
                     }));
                     
-                    await window.storage.set('playlist-meta', JSON.stringify(playlistMeta));
+                    localStorage.setItem('playlist-meta', JSON.stringify(playlistMeta));
                     
                     for (const track of playlist) {
                         const reader = new FileReader();
-                        reader.onload = async (e) => {
-                            await window.storage.set(`audio-${track.id}`, e.target.result);
+                        reader.onload = (e) => {
+                            localStorage.setItem(`audio-${track.id}`, e.target.result);
                         };
                         reader.readAsDataURL(track.file);
                     }
+                    console.log('Sauvegarde réussie:', playlist.length, 'chansons');
                 } catch (error) {
                     console.log('Erreur de sauvegarde:', error);
                 }
@@ -175,20 +176,21 @@
 
             const loadPlaylistFromStorage = async () => {
                 try {
-                    const metaResult = await window.storage.get('playlist-meta');
-                    if (!metaResult) {
+                    const metaJson = localStorage.getItem('playlist-meta');
+                    if (!metaJson) {
+                        console.log('Aucune playlist sauvegardée');
                         setIsLoading(false);
                         return;
                     }
                     
-                    const playlistMeta = JSON.parse(metaResult.value);
+                    const playlistMeta = JSON.parse(metaJson);
                     const loadedTracks = [];
                     
                     for (const meta of playlistMeta) {
                         try {
-                            const audioResult = await window.storage.get(`audio-${meta.id}`);
-                            if (audioResult) {
-                                const response = await fetch(audioResult.value);
+                            const audioData = localStorage.getItem(`audio-${meta.id}`);
+                            if (audioData) {
+                                const response = await fetch(audioData);
                                 const blob = await response.blob();
                                 const file = new File([blob], meta.fileName, { type: 'audio/mpeg' });
                                 
@@ -196,7 +198,7 @@
                                     id: meta.id,
                                     title: meta.title,
                                     artist: meta.artist,
-                                    url: audioResult.value,
+                                    url: audioData,
                                     file: file
                                 });
                             }
@@ -206,6 +208,7 @@
                     }
                     
                     if (loadedTracks.length > 0) {
+                        console.log('Chargé:', loadedTracks.length, 'chansons');
                         setPlaylist(loadedTracks);
                     }
                 } catch (error) {
@@ -255,11 +258,11 @@
 
             const removeTrack = async (trackId) => {
                 try {
-                    await window.storage.delete(`audio-${trackId}`);
+                    localStorage.removeItem(`audio-${trackId}`);
                     setPlaylist(prev => {
                         const newPlaylist = prev.filter(track => track.id !== trackId);
                         if (newPlaylist.length === 0) {
-                            window.storage.delete('playlist-meta');
+                            localStorage.removeItem('playlist-meta');
                         }
                         return newPlaylist;
                     });
@@ -267,6 +270,7 @@
                     if (currentTrack >= playlist.length - 1) {
                         setCurrentTrack(Math.max(0, playlist.length - 2));
                     }
+                    console.log('Chanson supprimée');
                 } catch (error) {
                     console.log('Erreur suppression:', error);
                 }
@@ -595,6 +599,7 @@
     </script>
 </body>
 </html>
+
 
 
 
