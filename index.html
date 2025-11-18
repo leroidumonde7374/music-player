@@ -159,18 +159,33 @@
                         fileName: track.file.name
                     }));
                     
+                    // Sauvegarder tous les fichiers audio en attendant chacun
+                    const savePromises = playlist.map(track => {
+                        return new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                try {
+                                    localStorage.setItem(`audio-${track.id}`, e.target.result);
+                                    resolve();
+                                } catch (err) {
+                                    reject(err);
+                                }
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(track.file);
+                        });
+                    });
+                    
+                    // Attendre que tous les fichiers soient sauvegardés
+                    await Promise.all(savePromises);
+                    
+                    // Sauvegarder les métadonnées après
                     localStorage.setItem('playlist-meta', JSON.stringify(playlistMeta));
                     
-                    for (const track of playlist) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            localStorage.setItem(`audio-${track.id}`, e.target.result);
-                        };
-                        reader.readAsDataURL(track.file);
-                    }
                     console.log('Sauvegarde réussie:', playlist.length, 'chansons');
                 } catch (error) {
                     console.log('Erreur de sauvegarde:', error);
+                    alert('Erreur: Les fichiers sont peut-être trop gros pour être sauvegardés');
                 }
             };
 
@@ -599,6 +614,7 @@
     </script>
 </body>
 </html>
+
 
 
 
