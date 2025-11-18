@@ -139,6 +139,32 @@
             const audioRef = useRef(null);
             const fileInputRef = useRef(null);
             const playlistInputRef = useRef(null);
+            const dbRef = useRef(null);
+
+            // Initialiser IndexedDB
+            useEffect(() => {
+                const initDB = () => {
+                    const request = indexedDB.open('MusicPlayerDB', 1);
+                    
+                    request.onerror = () => {
+                        console.log('Erreur IndexedDB');
+                    };
+                    
+                    request.onsuccess = (e) => {
+                        dbRef.current = e.target.result;
+                        loadPlaylistFromStorage();
+                    };
+                    
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('tracks')) {
+                            db.createObjectStore('tracks', { keyPath: 'id' });
+                        }
+                    };
+                };
+                
+                initDB();
+            }, []);
 
             useEffect(() => {
                 loadPlaylistFromStorage();
@@ -151,84 +177,99 @@
             }, [playlist, isLoading]);
 
             const savePlaylistToStorage = async () => {
+                if (!dbRef.current) {
+                    console.log('DB pas prête');
+                    return;
+                }
+                
                 try {
-                    const playlistMeta = playlist.map(track => ({
-                        id: track.id,
-                        title: track.title,
-                        artist: track.artist,
-                        fileName: track.file.name
-                    }));
+                    const transaction = dbRef.current.transaction(['tracks'], 'readwrite');
+                    const store = transaction.objectStore('tracks');
                     
-                    // Sauvegarder tous les fichiers audio en attendant chacun
-                    const savePromises = playlist.map(track => {
-                        return new Promise((resolve, reject) => {
+                    // Effacer l'ancienne playlist
+                    store.clear();
+                    
+                    // Sauvegarder chaque chanson
+                    for (const track of playlist) {
+                        await new Promise((resolve, reject) => {
                             const reader = new FileReader();
                             reader.onload = (e) => {
-                                try {
-                                    localStorage.setItem(`audio-${track.id}`, e.target.result);
-                                    resolve();
-                                } catch (err) {
-                                    reject(err);
-                                }
+                                const trackData = {
+                                    id: track.id,
+                                    title: track.title,
+                                    artist: track.artist,
+                                    fileName: track.file.name,
+                                    audioData: e.target.result
+                                };
+                                const request = store.add(trackData);
+                                request.onsuccess = resolve;
+                                request.onerror = reject;
                             };
                             reader.onerror = reject;
                             reader.readAsDataURL(track.file);
                         });
-                    });
+                    }
                     
-                    // Attendre que tous les fichiers soient sauvegardés
-                    await Promise.all(savePromises);
-                    
-                    // Sauvegarder les métadonnées après
-                    localStorage.setItem('playlist-meta', JSON.stringify(playlistMeta));
-                    
-                    console.log('Sauvegarde réussie:', playlist.length, 'chansons');
+                    console.log('✅ Sauvegarde réussie:', playlist.length, 'chansons');
                 } catch (error) {
-                    console.log('Erreur de sauvegarde:', error);
-                    alert('Erreur: Les fichiers sont peut-être trop gros pour être sauvegardés');
+                    console.log('❌ Erreur de sauvegarde:', error);
                 }
             };
 
             const loadPlaylistFromStorage = async () => {
+                if (!dbRef.current) {
+                    console.log('DB pas encore prête');
+                    setIsLoading(false);
+                    return;
+                }
+                
                 try {
-                    const metaJson = localStorage.getItem('playlist-meta');
-                    if (!metaJson) {
-                        console.log('Aucune playlist sauvegardée');
-                        setIsLoading(false);
-                        return;
-                    }
+                    const transaction = dbRef.current.transaction(['tracks'], 'readonly');
+                    const store = transaction.objectStore('tracks');
+                    const request = store.getAll();
                     
-                    const playlistMeta = JSON.parse(metaJson);
-                    const loadedTracks = [];
-                    
-                    for (const meta of playlistMeta) {
-                        try {
-                            const audioData = localStorage.getItem(`audio-${meta.id}`);
-                            if (audioData) {
-                                const response = await fetch(audioData);
+                    request.onsuccess = async (e) => {
+                        const savedTracks = e.target.result;
+                        
+                        if (savedTracks.length === 0) {
+                            console.log('Aucune chanson sauvegardée');
+                            setIsLoading(false);
+                            return;
+                        }
+                        
+                        const loadedTracks = [];
+                        
+                        for (const trackData of savedTracks) {
+                            try {
+                                const response = await fetch(trackData.audioData);
                                 const blob = await response.blob();
-                                const file = new File([blob], meta.fileName, { type: 'audio/mpeg' });
+                                const file = new File([blob], trackData.fileName, { type: 'audio/mpeg' });
                                 
                                 loadedTracks.push({
-                                    id: meta.id,
-                                    title: meta.title,
-                                    artist: meta.artist,
-                                    url: audioData,
+                                    id: trackData.id,
+                                    title: trackData.title,
+                                    artist: trackData.artist,
+                                    url: trackData.audioData,
                                     file: file
                                 });
+                            } catch (err) {
+                                console.log('Erreur chargement piste:', err);
                             }
-                        } catch (err) {
-                            console.log('Erreur chargement piste:', err);
                         }
-                    }
+                        
+                        if (loadedTracks.length > 0) {
+                            console.log('✅ Chargé:', loadedTracks.length, 'chansons');
+                            setPlaylist(loadedTracks);
+                        }
+                        setIsLoading(false);
+                    };
                     
-                    if (loadedTracks.length > 0) {
-                        console.log('Chargé:', loadedTracks.length, 'chansons');
-                        setPlaylist(loadedTracks);
-                    }
+                    request.onerror = () => {
+                        console.log('❌ Erreur de chargement');
+                        setIsLoading(false);
+                    };
                 } catch (error) {
-                    console.log('Erreur de chargement:', error);
-                } finally {
+                    console.log('❌ Erreur:', error);
                     setIsLoading(false);
                 }
             };
@@ -272,22 +313,24 @@
             };
 
             const removeTrack = async (trackId) => {
+                if (!dbRef.current) return;
+                
                 try {
-                    localStorage.removeItem(`audio-${trackId}`);
+                    const transaction = dbRef.current.transaction(['tracks'], 'readwrite');
+                    const store = transaction.objectStore('tracks');
+                    store.delete(trackId);
+                    
                     setPlaylist(prev => {
                         const newPlaylist = prev.filter(track => track.id !== trackId);
-                        if (newPlaylist.length === 0) {
-                            localStorage.removeItem('playlist-meta');
-                        }
                         return newPlaylist;
                     });
                     
                     if (currentTrack >= playlist.length - 1) {
                         setCurrentTrack(Math.max(0, playlist.length - 2));
                     }
-                    console.log('Chanson supprimée');
+                    console.log('✅ Chanson supprimée');
                 } catch (error) {
-                    console.log('Erreur suppression:', error);
+                    console.log('❌ Erreur suppression:', error);
                 }
             };
 
@@ -614,6 +657,7 @@
     </script>
 </body>
 </html>
+
 
 
 
