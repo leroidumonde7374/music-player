@@ -1,8 +1,8 @@
 const CACHE_NAME = 'music-player-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/icon.png',
+  '/music-player/',
+  '/music-player/index.html',
+  '/music-player/icon.png',
   'https://cdn.tailwindcss.com',
   'https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js',
@@ -65,7 +65,7 @@ self.addEventListener('fetch', event => {
       })
       .catch(() => {
         // En cas d'erreur (hors ligne), retourner une page de base
-        return caches.match('/index.html');
+        return caches.match('/music-player/index.html');
       })
   );
 });
